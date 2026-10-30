@@ -1,4 +1,4 @@
-# aion-gear: Design
+# Glimpse: Design
 
 Date: 2026-10-30
 Status: Draft, pending review
@@ -35,7 +35,7 @@ Windows first. Linux and macOS later, with no rewrite.
 ## Architecture
 
 ```
-aion-gear/
+glimpse/
   main.go              Wails entry point
   internal/
     capture/           Npcap capture, game connection detection, TCP reassembly
@@ -122,7 +122,7 @@ Initial weights are placeholders to be tuned by the maintainer and community.
 
 ## Game data (`gamedata`)
 
-- Single `items.json` in `os.UserCacheDir()/aion-gear`, loaded into a map at startup.
+- Single `items.json` in `os.UserCacheDir()/glimpse`, loaded into a map at startup.
 - Unknown item ID: fetched in background from questlog, cached, then an update event is emitted. Offline: shown as `Unknown item #ID` and still graded on its captured stats.
 - Settings action "Download all assets": bulk fetch of all items and icons into the cache, with progress events. Icons are served to the webview from the cache.
 - Requests are rate limited with an identifying User-Agent.
