@@ -1,0 +1,15 @@
+{
+	"fixed": {
+		"file_version": "0.0.1"
+	},
+	"info": {
+		"0409": {
+			"ProductVersion": "0.0.1",
+			"CompanyName": "aexygit",
+			"FileDescription": "Aion 2 gear inspector",
+			"LegalCopyright": "(c) 2026, aexygit",
+			"ProductName": "Glimpse",
+			"Comments": "Aion 2 gear inspector"
+		}
+	}
+}

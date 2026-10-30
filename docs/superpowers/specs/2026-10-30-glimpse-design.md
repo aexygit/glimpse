@@ -29,7 +29,7 @@ Windows first. Linux and macOS later, with no rewrite.
 
 - Go backend, Wails (latest stable) desktop shell using the system webview (WebView2 on Windows).
 - Frontend: Svelte + TypeScript, built with Vite.
-- Packet capture: Npcap via gopacket `pcap`, loading `wpcap.dll` at runtime (no cgo on Windows).
+- Packet capture and framing: `github.com/nuriland/a2kit` (MIT). On Windows it uses pktmon, built into Windows: no Npcap, but the app runs as Administrator. On Linux it uses libpcap.
 - Logging: `log/slog` to a rotating file in the user config folder.
 
 ## Architecture
@@ -38,10 +38,10 @@ Windows first. Linux and macOS later, with no rewrite.
 glimpse/
   main.go              Wails entry point
   internal/
-    capture/           Npcap capture, game connection detection, TCP reassembly
+    capture/           thin wrapper over a2kit: live capture, status, replay of recordings
     protocol/          decodes game packets into typed messages (InspectResult)
     gear/              domain types: Character, Item, Slot, Stats (no I/O)
-    gamedata/          item DB: local cache, fetch from questlog, bulk asset download
+    gamedata/          item DB: local cache, fetch from NC official API (TW catalog), bulk asset download
     grading/           pure scoring: slot grades, overall score, upgrade advice
     app/               Wails bindings, in-memory session, UI events
   data/grading/        stat weights and BIS tables per class (JSON, embedded)
@@ -63,12 +63,12 @@ Dependencies flow one way: `app` -> `capture`, `protocol`, `gamedata`, `grading`
 
 - Find the game process by executable name, list its TCP connections by PID (`GetExtendedTcpTable` on Windows), and set a BPF filter on those ports. No blind scanning.
 - Poll for the process; reattach automatically if the game restarts or the connection changes.
-- If Npcap is missing, report a status the UI turns into an install link.
+- a2kit's wire decoder finds the game's connection among all traffic and handles reassembly, LZ4 and bundled frames. If capture fails for lack of rights, report a status the UI turns into "Run Glimpse as Administrator".
 - Runs in its own goroutine under a `context`. A `recover` at the loop boundary logs and continues.
 
 ### Protocol
 
-- Packet layout is confirmed against real captures early in implementation. Existing Npcap based Aion 2 tools prove the traffic is decodable.
+- Packet layout is confirmed against real captures early in implementation. a2kit proves the traffic is decodable; it has no inspect decoder yet, so Glimpse adds one over a2kit frames (candidate for an upstream contribution).
 - Decoders are pure functions over byte slices, tested with recorded fixtures in `testdata/`.
 
 ## Domain model (`gear`)
@@ -123,15 +123,15 @@ Initial weights are placeholders to be tuned by the maintainer and community.
 ## Game data (`gamedata`)
 
 - Single `items.json` in `os.UserCacheDir()/glimpse`, loaded into a map at startup.
-- Unknown item ID: fetched in background from questlog, cached, then an update event is emitted. Offline: shown as `Unknown item #ID` and still graded on its captured stats.
+- Unknown item ID: fetched in background from the item source, cached, then an update event is emitted. Offline: shown as `Unknown item #ID` and still graded on its captured stats.
 - Settings action "Download all assets": bulk fetch of all items and icons into the cache, with progress events. Icons are served to the webview from the cache.
 - Requests are rate limited with an identifying User-Agent.
-- Before implementing the fetcher, check questlog terms and any public API. If scraping is not acceptable, fall back to datamining the client files.
+- Item source: NC official AION 2 site API, TW region catalog in English, through the MIT Go client `github.com/nuriland/aion2-api`. questlog.gg does not allow automated use. Global regions have no item catalog, so Global players rely on item IDs being shared with TW (verify with first captures). Datamining the client files stays the fallback.
 
 ## UI
 
 - Main view: paper doll gear grid. Each slot shows icon, enchant and a grade badge. Hover shows item stats. Side panel shows overall grade, score and top 3 upgrades.
-- Top bar: capture status (Npcap missing, waiting for game, capturing) and the list of characters inspected this session.
+- Top bar: capture status (needs Administrator, waiting for game, capturing, error) and the list of characters inspected this session.
 - Settings: asset download, cache folder path.
 
 ## Error handling

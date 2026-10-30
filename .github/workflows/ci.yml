@@ -1,0 +1,48 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install GTK and WebKit dev packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends pkg-config gcc libgtk-4-dev libwebkitgtk-6.0-dev libpcap-dev
+      - name: Build frontend (needed by go:embed)
+        run: |
+          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
+          wails3 generate bindings -ts -i
+          cd frontend && npm ci && npm run build
+      - run: go test ./internal/...
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
+      - run: wails3 build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: glimpse-windows
+          path: bin/*.exe

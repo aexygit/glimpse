@@ -1,0 +1,9 @@
+{
+  "class": "Assassin",
+  "weights": { "WeaponFixingDamage": 1.0, "Critical": 0.9, "WeaponAccuracy": 0.6, "HPMax": 0.2 },
+  "bis": {
+    "MainHand": { "itemId": 123, "tier": 5, "enchant": 15, "stats": { "WeaponFixingDamage": 1200, "Critical": 80 } },
+    "Ring1": { "itemId": 456, "tier": 5, "enchant": 15, "stats": { "WeaponFixingDamage": 300, "WeaponAccuracy": 120 } }
+  },
+  "thresholds": { "S": 0.95, "A": 0.85, "B": 0.70, "C": 0.50 }
+}
