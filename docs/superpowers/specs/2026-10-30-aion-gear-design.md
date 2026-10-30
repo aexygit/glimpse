@@ -103,11 +103,12 @@ Rules per class in `data/grading/<class>.json`:
 {
   "class": "assassin",
   "weights": { "attack": 1.0, "crit": 0.9, "accuracy": 0.6, "hp": 0.2 },
-  "bis": { "weapon": { "itemId": 123, "enchant": 15 } },
+  "bis": { "weapon": { "itemId": 123, "tier": 5, "enchant": 15, "stats": { "attack": 1200, "crit": 80 } } },
   "thresholds": { "S": 0.95, "A": 0.85, "B": 0.70, "C": 0.50 }
 }
 ```
 
+- BIS entries carry their own tier and stats, so grading never needs `gamedata`.
 - Weighted value of an item: `sum(stat * weight)` over its stats and sockets.
 - Slot score: `weighted(item) / weighted(bis)`, capped at 1. Empty slot scores 0.
 - Slot share: `weighted(bis of slot) / sum(weighted(bis of all slots))`.
