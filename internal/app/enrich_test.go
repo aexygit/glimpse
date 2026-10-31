@@ -23,10 +23,10 @@ func TestEnrichKnown(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := enrich(protocol.InspectResult{Items: []protocol.InspectItem{
-		{Slot: "MainHand", ID: 1, Rolls: gear.Stats{"attack": 5, "crit": 2}},
+		{Slot: "MainHand", ID: 1},
 	}}, s)
 	it := c.Items["MainHand"]
-	if it.Name != "Sword" || it.Tier != 5 || !it.Known || it.Stats["attack"] != 15 || it.Stats["crit"] != 2 {
+	if it.Name != "Sword" || it.Tier != 5 || !it.Known || it.Stats["attack"] != 10 {
 		t.Errorf("item = %+v", it)
 	}
 	if e, _ := s.Get(1); e.Stats["attack"] != 10 {
@@ -36,10 +36,10 @@ func TestEnrichKnown(t *testing.T) {
 
 func TestEnrichUnknownOffline(t *testing.T) {
 	c := enrich(protocol.InspectResult{Items: []protocol.InspectItem{
-		{Slot: "Ring1", ID: 42, Rolls: gear.Stats{"crit": 3}},
+		{Slot: "Ring1", ID: 42},
 	}}, openStore(t))
 	it := c.Items["Ring1"]
-	if it.Name != "Unknown item #42" || it.Known || len(it.Stats) != 1 || it.Stats["crit"] != 3 {
+	if it.Name != "Unknown item #42" || it.Known || len(it.Stats) != 0 {
 		t.Errorf("item = %+v", it)
 	}
 }

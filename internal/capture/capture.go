@@ -58,6 +58,12 @@ func (c *Capturer) Run(ctx context.Context) error {
 	for ctx.Err() == nil {
 		wait := retryError
 		r, err := openLive(ctx, "", a2kit.Config{})
+		if ctx.Err() != nil {
+			if err == nil {
+				r.Close()
+			}
+			return nil // shutdown, not a capture failure
+		}
 		switch {
 		case err == nil:
 			st.set(StatusWaitingGame)

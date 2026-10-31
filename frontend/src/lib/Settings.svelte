@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { Events } from '@wailsio/runtime'
-  import { DownloadAssets, Paths } from '../../bindings/github.com/aexygit/glimpse/internal/app/service'
+  import { DownloadAssets, Paths } from '../../bindings/github.com/aexygit/glimpse/internal/app/api'
 
   let { onclose }: { onclose: () => void } = $props()
   let paths = $state<Record<string, string | undefined>>({})
@@ -10,7 +10,7 @@
   let error = $state('')
 
   onMount(() => {
-    Paths().then((p) => (paths = p)).catch((e) => (error = String(e)))
+    Paths().then((p) => (paths = p ?? {})).catch((e) => (error = String(e)))
     return Events.On('assets:progress', (e) => (progress = e.data))
   })
 
@@ -30,13 +30,14 @@
 <section aria-labelledby="settings-h">
   <div class="head"><h2 id="settings-h">Settings</h2><button onclick={onclose}>Close</button></div>
   <button onclick={download} disabled={busy}>{busy ? 'Downloading' : 'Download all assets'}</button>
+  <p class="muted">The full catalog is about 10,000 items at 5 per second, so this takes around half an hour and cannot be cancelled once started.</p>
   {#if progress.total > 0}
     <progress max={progress.total} value={progress.done} aria-label="Asset download"></progress>
     <span>{progress.done} / {progress.total}</span>
   {/if}
   {#if error}<p class="err" role="alert">{error}</p>{/if}
   <dl>
-    {#each Object.entries(paths) as [k, v]}<dt>{k}</dt><dd>{v}</dd>{/each}
+    {#each Object.entries(paths) as [k, v] (k)}<dt>{k}</dt><dd>{v}</dd>{/each}
   </dl>
 </section>
 
@@ -50,4 +51,5 @@
   dt { color: var(--muted); margin-top: 8px; text-transform: capitalize; }
   dd { margin: 0; word-break: break-all; }
   .err { color: var(--bad); }
+  .muted { color: var(--muted); max-width: 46ch; }
 </style>

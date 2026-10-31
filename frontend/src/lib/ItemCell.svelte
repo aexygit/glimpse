@@ -12,13 +12,13 @@
   } = $props()
 
   const fmt = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(1))
-  const entries = (s?: { [k: string]: number | undefined }) => Object.entries(s ?? {}) as [string, number][]
+  const entries = (s?: { [k: string]: number | undefined } | null) => Object.entries(s ?? {}) as [string, number][]
   let dismissed = $state(false)
   const tipId = $derived(`tip-${slot}`)
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions (focusable so the tooltip shows on keyboard focus) -->
-<div class="cell" role="group" class:empty={!item} tabindex="0" aria-describedby={item ? tipId : undefined}
+<div class={['cell', { empty: !item }]} role="group" tabindex="0" aria-describedby={item ? tipId : undefined}
   aria-label={item ? `${label(slot)}: ${item.Name}` : `${label(slot)}: empty`}
   onkeydown={(e) => e.key === 'Escape' && (dismissed = true)} onblur={() => (dismissed = false)}
   onmouseleave={() => (dismissed = false)}>
@@ -27,14 +27,10 @@
   {#if letter}<span class="badge g{letter}">{letter}</span>{/if}
 
   {#if item}
-    <div class="tip {side}" class:flip class:dismissed id={tipId} role="tooltip">
+    <div class={[`tip ${side}`, { flip, dismissed }]} id={tipId} role="tooltip">
       <strong>{item.Name || `Unknown item #${item.ID}`}</strong>
       <div class="muted">{label(slot)}{item.Tier ? `, tier ${item.Tier}` : ''}{item.Enchant ? `, +${item.Enchant}` : ''}</div>
-      {#each entries(item.Stats) as [k, v]}<div class="row"><span>{k}</span><span>{fmt(v)}</span></div>{/each}
-      {#each item.Sockets ?? [] as sock, i}
-        <div class="muted">Socket {i + 1}</div>
-        {#each entries(sock) as [k, v]}<div class="row"><span>{k}</span><span>{fmt(v)}</span></div>{/each}
-      {/each}
+      {#each entries(item.Stats) as [k, v] (k)}<div class="row"><span>{k}</span><span>{fmt(v)}</span></div>{/each}
     </div>
   {/if}
 </div>

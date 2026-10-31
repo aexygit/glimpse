@@ -14,7 +14,6 @@ type Item struct {
 	Tier    int
 	Enchant int
 	Stats   Stats
-	Sockets []Stats
 	// Known is false when gamedata had no entry for ID.
 	Known bool
 }

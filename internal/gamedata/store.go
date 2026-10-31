@@ -15,7 +15,9 @@ import (
 	"github.com/aexygit/glimpse/internal/gear"
 )
 
-// Version is set at build time and used in the HTTP User-Agent.
+// Version goes into the HTTP User-Agent. Release builds set it with
+// -ldflags -X from build/windows/Taskfile.yml; "dev" is what a plain
+// `go build` or `go test` gets.
 var Version = "dev"
 
 type Entry struct {
@@ -28,9 +30,11 @@ type Entry struct {
 
 // Store is safe for concurrent use.
 type Store struct {
-	dir   string
-	mu    sync.RWMutex
-	items map[int]Entry
+	dir string
+	// writeMu serializes Put so two snapshots cannot interleave and lose entries.
+	writeMu sync.Mutex
+	mu      sync.RWMutex
+	items   map[int]Entry
 }
 
 // Open loads cacheDir/items.json, creating cacheDir if needed. A corrupt
@@ -73,15 +77,30 @@ func (s *Store) Get(id int) (Entry, bool) {
 }
 
 // Put persists entries atomically; the in-memory map changes only on success.
+// The read lock is not held across the file write, so Get stays fast while a
+// bulk download runs; writeMu keeps concurrent Puts from losing each other.
 func (s *Store) Put(entries ...Entry) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
+	s.mu.RLock()
 	next := maps.Clone(s.items)
+	s.mu.RUnlock()
 	for _, e := range entries {
 		e.Stats = maps.Clone(e.Stats)
 		next[e.ID] = e
 	}
-	data, err := json.Marshal(next)
+	if err := s.writeFile(next); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.items = next
+	s.mu.Unlock()
+	return nil
+}
+
+func (s *Store) writeFile(items map[int]Entry) error {
+	data, err := json.Marshal(items)
 	if err != nil {
 		return fmt.Errorf("encode items: %w", err)
 	}
@@ -100,7 +119,6 @@ func (s *Store) Put(entries ...Entry) error {
 		os.Remove(tmp.Name())
 		return fmt.Errorf("replace items.json: %w", err)
 	}
-	s.items = next
 	return nil
 }
 

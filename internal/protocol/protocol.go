@@ -7,23 +7,36 @@ import (
 	"github.com/aexygit/glimpse/internal/gear"
 )
 
+// InspectItem is everything the wire carries about one equipped item:
+// no stat rolls and no sockets, the broadcast does not include them.
 type InspectItem struct {
 	Slot    gear.Slot
 	ID      int
 	Enchant int
-	Rolls   gear.Stats
-	Sockets []gear.Stats
 }
 
 type InspectResult struct {
-	Name  string
-	Class gear.Class
-	Level int
-	Items []InspectItem
+	// Entity is the in-world entity id, stable while the character stays in view.
+	// Consumers can use it to deduplicate repeated broadcasts.
+	Entity int
+	Name   string
+	Class  gear.Class
+	Level  int
+	Items  []InspectItem
 }
 
-// OpInspect is a placeholder until the inspect opcode is identified.
-const OpInspect wire.Opcode = 0x0000
+// OpPlayer is the proximity broadcast that carries a character's visible equipment.
+const OpPlayer wire.Opcode = 0x3645
 
-// Decode returns nil for every frame until the inspect decoder lands.
-func Decode(f wire.Frame) (any, error) { return nil, nil }
+// Decode returns an InspectResult (by value, which is what app.Service.OnMessage
+// asserts) for a Player frame from the server, and nil for every other frame.
+func Decode(f wire.Frame) (any, error) {
+	if f.Opcode != OpPlayer || f.Flags&wire.FromServer == 0 || f.Flags&wire.FromClient != 0 {
+		return nil, nil
+	}
+	r, err := decodePlayer(f.Payload)
+	if err != nil {
+		return nil, err
+	}
+	return r, nil
+}

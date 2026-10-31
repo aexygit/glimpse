@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"embed"
-	"log"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -21,9 +20,13 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
+// main reports a startup failure itself: the release binary is linked with
+// -H windowsgui, so it has no console and a write to stderr goes nowhere.
 func main() {
 	if err := run(); err != nil {
-		log.Fatal(err)
+		slog.Error("startup failed", "error", err)
+		showError("Glimpse", "Glimpse could not start.\n\n"+err.Error())
+		os.Exit(1)
 	}
 }
 
@@ -32,18 +35,20 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	cacheBase, err := os.UserCacheDir()
-	if err != nil {
-		return err
-	}
-	cfgDir, cacheDir := filepath.Join(cfgBase, "glimpse"), filepath.Join(cacheBase, "glimpse")
-
+	cfgDir := filepath.Join(cfgBase, "glimpse")
+	// Set up logging before anything else that can fail, so its error reaches the file.
 	if logger, closer, err := app.SetupLog(cfgDir); err != nil {
 		slog.Error("log setup failed, logging to stderr", "error", err)
 	} else {
 		defer closer.Close()
 		slog.SetDefault(logger)
 	}
+
+	cacheBase, err := os.UserCacheDir()
+	if err != nil {
+		return err
+	}
+	cacheDir := filepath.Join(cacheBase, "glimpse")
 
 	store, err := gamedata.Open(cacheDir)
 	if err != nil {
@@ -66,7 +71,7 @@ func run() error {
 	wapp = application.New(application.Options{
 		Name:        "Glimpse",
 		Description: "Aion 2 gear inspector",
-		Services:    []application.Service{application.NewService(svc)},
+		Services:    []application.Service{application.NewService(svc.API())},
 		Assets: application.AssetOptions{
 			Handler:    application.AssetFileServerFS(assets),
 			Middleware: svc.IconHandler,
@@ -79,6 +84,13 @@ func run() error {
 	}
 
 	go func() {
+		// Spec: a recover at the loop boundary. The status callbacks emit into the
+		// webview synchronously, so a panic there would otherwise kill the process.
+		defer func() {
+			if p := recover(); p != nil {
+				slog.Error("capture goroutine panicked", "panic", p)
+			}
+		}()
 		var err error
 		if p := os.Getenv("GLIMPSE_REPLAY"); p != "" {
 			err = capture.Replay(ctx, p, svc.OnMessage)

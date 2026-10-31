@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { Events } from '@wailsio/runtime'
-  import { Session, Status as GetStatus, Warnings } from '../bindings/github.com/aexygit/glimpse/internal/app/service'
+  import { Session, Status as GetStatus, Warnings } from '../bindings/github.com/aexygit/glimpse/internal/app/api'
   import type { Inspected } from '../bindings/github.com/aexygit/glimpse/internal/app/models'
   import { Status } from '../bindings/github.com/aexygit/glimpse/internal/capture/models'
   import StatusBar from './lib/StatusBar.svelte'
@@ -21,7 +21,6 @@
     for (const it of Object.values(i.Character.Items)) {
       if (!it) continue
       it.Stats = it.Stats ?? {}
-      it.Sockets = (it.Sockets ?? []).map((s) => s ?? {})
     }
     i.Report.Slots = i.Report.Slots ?? []
     i.Report.Upgrades = i.Report.Upgrades ?? []
@@ -48,17 +47,17 @@
         if (!warnings.includes(e.data)) warnings.push(e.data)
       }),
     ]
-    loadState()
+    loadState().catch((e) => console.error(e))
     return () => offs.forEach((off) => off())
   })
 
   async function loadState() {
     const [s, st, w] = await Promise.all([Session(), GetStatus(), Warnings()])
-    for (const i of s) if (!session.some((x) => x.ID === i.ID)) session.push(normalize(i))
+    for (const i of s ?? []) if (!session.some((x) => x.ID === i.ID)) session.push(normalize(i))
     session.sort((a, b) => a.ID - b.ID)
-    if (selectedID === null && s.length) selectedID = session[session.length - 1].ID
+    if (selectedID === null && session.length) selectedID = session[session.length - 1].ID
     if (status === Status.$zero) status = st
-    for (const m of w) if (!warnings.includes(m)) warnings.push(m)
+    for (const m of w ?? []) if (!warnings.includes(m)) warnings.push(m)
   }
 </script>
 
@@ -76,7 +75,7 @@
     <GearGrid inspected={selected} />
     <GradePanel inspected={selected} />
   {:else}
-    <p class="empty">Inspect a character in game to see their gear here.</p>
+    <p class="empty">Gear appears here for characters who come into view in game.</p>
   {/if}
 </main>
 

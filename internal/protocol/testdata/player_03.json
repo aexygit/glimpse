@@ -1,0 +1,85 @@
+{
+ "Entity": 9689,
+ "Name": "Tstr3",
+ "Class": "",
+ "Level": 16,
+ "Items": [
+  {
+   "Slot": "MainHand",
+   "ID": 110430048,
+   "Enchant": 11,
+   "Rolls": null,
+   "Sockets": null
+  },
+  {
+   "Slot": "Helmet",
+   "ID": 210340035,
+   "Enchant": 5,
+   "Rolls": null,
+   "Sockets": null
+  },
+  {
+   "Slot": "Shoulder",
+   "ID": 210440035,
+   "Enchant": 5,
+   "Rolls": null,
+   "Sockets": null
+  },
+  {
+   "Slot": "Torso",
+   "ID": 210130038,
+   "Enchant": 8,
+   "Rolls": null,
+   "Sockets": null
+  },
+  {
+   "Slot": "Pants",
+   "ID": 210240042,
+   "Enchant": 1,
+   "Rolls": null,
+   "Sockets": null
+  },
+  {
+   "Slot": "Gloves",
+   "ID": 210540029,
+   "Enchant": 0,
+   "Rolls": null,
+   "Sockets": null
+  },
+  {
+   "Slot": "Boots",
+   "ID": 210640042,
+   "Enchant": 5,
+   "Rolls": null,
+   "Sockets": null
+  },
+  {
+   "Slot": "Cape",
+   "ID": 210740035,
+   "Enchant": 5,
+   "Rolls": null,
+   "Sockets": null
+  },
+  {
+   "Slot": "Necklace",
+   "ID": 310140035,
+   "Enchant": 0,
+   "Rolls": null,
+   "Sockets": null
+  },
+  {
+   "Slot": "Earring1",
+   "ID": 310230051,
+   "Enchant": 9,
+   "Rolls": null,
+   "Sockets": null
+  },
+  {
+   "Slot": "Earring2",
+   "ID": 310230051,
+   "Enchant": 10,
+   "Rolls": null,
+   "Sockets": null
+  }
+ ]
+}

@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -111,8 +112,8 @@ func TestServiceFetchesUnknown(t *testing.T) {
 
 func TestSessionCap(t *testing.T) {
 	s, rec := newSvc(t, offline(), nil)
-	for range maxSession + 5 {
-		s.OnMessage(protocol.InspectResult{})
+	for i := range maxSession + 5 {
+		s.OnMessage(protocol.InspectResult{Entity: i + 1}) // one entity per character
 		rec.next(t)
 	}
 	got := s.Session()
@@ -186,9 +187,10 @@ func okServer(t *testing.T, gate chan struct{}) *http.Client {
 func TestServiceSharedInflightBothUpdated(t *testing.T) {
 	gate := make(chan struct{})
 	s, rec := newSvc(t, okServer(t, gate), map[gear.Class]grading.Rules{})
-	msg := protocol.InspectResult{Items: []protocol.InspectItem{{Slot: "MainHand", ID: 7}}}
-	s.OnMessage(msg)
-	s.OnMessage(msg)
+	items := []protocol.InspectItem{{Slot: "MainHand", ID: 7}}
+	// Two characters wearing the same item: one fetch, both entries updated.
+	s.OnMessage(protocol.InspectResult{Entity: 1, Items: items})
+	s.OnMessage(protocol.InspectResult{Entity: 2, Items: items})
 	close(gate)
 	updated := map[int]bool{}
 	for range 4 {
@@ -225,5 +227,137 @@ func TestWarnings(t *testing.T) {
 	}
 	if w := s.Warnings(); len(w) != 1 || w[0] != "bad rules" {
 		t.Errorf("warnings = %v", w)
+	}
+}
+
+func TestServiceEmptyStateIsNotNil(t *testing.T) {
+	s, _ := newSvc(t, offline(), nil)
+	a := s.API()
+	// A nil slice marshals to JSON null, which the webview then iterates and throws on.
+	if s.Session() == nil || s.Warnings() == nil || a.Session() == nil || a.Warnings() == nil {
+		t.Error("empty session or warnings is nil")
+	}
+}
+
+func TestServiceRepeatEntityUpdatesInPlace(t *testing.T) {
+	s, rec := newSvc(t, offline(), nil)
+	s.OnMessage(protocol.InspectResult{Entity: 42, Name: "Rin", Level: 36})
+	if e := rec.next(t); e.name != "inspect" || e.data.(Inspected).ID != 1 {
+		t.Fatalf("first event = %+v", e)
+	}
+	s.OnMessage(protocol.InspectResult{Entity: 42, Name: "Rin", Level: 40})
+	e := rec.next(t)
+	in, ok := e.data.(Inspected)
+	if e.name != "inspect:update" || !ok || in.ID != 1 || in.Character.Level != 40 {
+		t.Fatalf("repeat event = %+v", e)
+	}
+	got := s.Session()
+	if len(got) != 1 || got[0].ID != 1 || got[0].Character.Level != 40 {
+		t.Errorf("session = %+v, want one entry updated in place", got)
+	}
+}
+
+func TestServiceNotGradedWithoutItemData(t *testing.T) {
+	rules := map[gear.Class]grading.Rules{"assassin": {
+		Class:      "assassin",
+		Weights:    map[gear.Stat]float64{"attack": 1},
+		BIS:        map[gear.Slot]grading.BIS{"MainHand": {Tier: 5, Enchant: 15, Stats: gear.Stats{"attack": 100}}},
+		Thresholds: map[string]float64{"S": 0.95},
+	}}
+	s, rec := newSvc(t, offline(), rules)
+	s.OnMessage(protocol.InspectResult{Entity: 1, Class: "assassin",
+		Items: []protocol.InspectItem{{Slot: "MainHand", ID: 9}}})
+	if in := rec.next(t).data.(Inspected); in.Graded {
+		t.Errorf("graded with no cached item: %+v", in.Report)
+	}
+	if err := s.store.Put(gamedata.Entry{ID: 10, Name: "Blade", Tier: 5, Stats: gear.Stats{"attack": 100}}); err != nil {
+		t.Fatal(err)
+	}
+	s.OnMessage(protocol.InspectResult{Entity: 2, Class: "assassin",
+		Items: []protocol.InspectItem{{Slot: "MainHand", ID: 10, Enchant: 15}}})
+	if in := rec.next(t).data.(Inspected); !in.Graded {
+		t.Errorf("not graded with a cached item: %+v", in)
+	}
+}
+
+func TestClaimUnknownSkipsRecentFailure(t *testing.T) {
+	s, _ := newSvc(t, offline(), nil)
+	c := gear.Character{Items: map[gear.Slot]gear.Item{"Ring1": {ID: 9}}}
+	if mine, others := s.claimUnknown(c); len(mine) != 1 || len(others) != 0 {
+		t.Fatalf("first claim = %v %v, want the id", mine, others)
+	}
+	s.mu.Lock()
+	delete(s.inflight, 9)
+	s.failed[9] = time.Now()
+	s.mu.Unlock()
+	if mine, others := s.claimUnknown(c); len(mine) != 0 || len(others) != 0 {
+		t.Errorf("claim after a failure = %v %v, want nothing", mine, others)
+	}
+	s.mu.Lock()
+	s.failed[9] = time.Now().Add(-2 * refetchAfter)
+	s.mu.Unlock()
+	if mine, _ := s.claimUnknown(c); len(mine) != 1 {
+		t.Errorf("claim past the retry window = %v, want the id again", mine)
+	}
+}
+
+func TestServiceRecordsFetchFailure(t *testing.T) {
+	s, rec := newSvc(t, offline(), nil)
+	s.OnMessage(protocol.InspectResult{Entity: 1, Items: []protocol.InspectItem{{Slot: "Ring1", ID: 9}}})
+	rec.next(t)
+	for deadline := time.Now().Add(5 * time.Second); ; {
+		s.mu.Lock()
+		_, ok := s.failed[9]
+		s.mu.Unlock()
+		if ok {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("a failed fetch was not remembered, so it will be retried forever")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func TestDownloadAssetsOneAtATime(t *testing.T) {
+	gate, hit := make(chan struct{}), make(chan struct{}, 1)
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case hit <- struct{}{}:
+		default:
+		}
+		<-gate
+		http.Error(w, "stop", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	u, _ := url.Parse(srv.URL)
+	s, _ := newSvc(t, &http.Client{Transport: toServer{u, srv.Client().Transport}}, nil)
+	done := make(chan error, 1)
+	go func() { done <- s.DownloadAssets() }()
+	select {
+	case <-hit:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the first download never reached the catalog")
+	}
+	// In a goroutine: without the guard the second call blocks on the gated
+	// server instead of returning, and the test would hang rather than fail.
+	second := make(chan error, 1)
+	go func() { second <- s.DownloadAssets() }()
+	select {
+	case err := <-second:
+		if err == nil || !strings.Contains(err.Error(), "already running") {
+			t.Errorf("second download = %v, want it refused", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("the second download was not refused, it started a run of its own")
+	}
+	close(gate)
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the first download did not finish")
+	}
+	if s.downloading.Load() {
+		t.Error("the guard was not released after the run")
 	}
 }

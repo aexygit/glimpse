@@ -6,7 +6,7 @@ License: MIT
 
 ## Goal
 
-Open source desktop app for Aion 2. When the user inspects any character in game, the app captures the inspect data from network traffic, displays the character's gear, grades it, and lists what to upgrade first.
+Open source desktop app for Aion 2. Gear arrives from network traffic for characters who come into view in game (implementation note: there is no inspect opcode, see `docs/research/protocol.md`). The app displays each character's gear, grades it, and lists what to upgrade first.
 
 Windows first. Linux and macOS later, with no rewrite.
 
@@ -53,7 +53,7 @@ Dependencies flow one way: `app` -> `capture`, `protocol`, `gamedata`, `grading`
 ### Data flow
 
 1. `capture` emits reassembled TCP payloads from the game connection.
-2. `protocol` frames and decodes them. Only known opcodes are decoded, the rest is dropped. Inspect responses become `InspectResult` (character info, item IDs, enchant, rolled stats, sockets).
+2. `protocol` frames and decodes them. Only known opcodes are decoded, the rest is dropped. The `Player` proximity broadcast becomes an `InspectResult` (entity id, name, level, and per item the item ID and enchant). The wire carries no stat rolls and no sockets.
 3. `app` enriches items through `gamedata` (name, icon, tier, base stats) and builds a `gear.Character`.
 4. `grading` computes the report.
 5. `app` stores character and report in the session and emits an `inspect` event.
@@ -61,7 +61,7 @@ Dependencies flow one way: `app` -> `capture`, `protocol`, `gamedata`, `grading`
 
 ### Capture
 
-- Find the game process by executable name, list its TCP connections by PID (`GetExtendedTcpTable` on Windows), and set a BPF filter on those ports. No blind scanning.
+- Implemented: `a2kit.Capture(ctx, "", a2kit.Config{})`, a2kit's every-adapter default, and a2kit's wire decoder picks the game connection out of all traffic. The process-lookup-and-BPF-filter path below was not taken; it also contradicted the next point, which is what the implementation relies on. Disclosed in the README.
 - Poll for the process; reattach automatically if the game restarts or the connection changes.
 - a2kit's wire decoder finds the game's connection among all traffic and handles reassembly, LZ4 and bundled frames. If capture fails for lack of rights, report a status the UI turns into "Run Glimpse as Administrator".
 - Runs in its own goroutine under a `context`. A `recover` at the loop boundary logs and continues.
@@ -86,8 +86,7 @@ type Item struct {
     Name    string  // from gamedata
     Tier    int     // rarity rank, higher is better
     Enchant int
-    Stats   Stats   // base + enchant + rolls, summed
-    Sockets []Stats // manastones or equivalent
+    Stats   Stats   // from gamedata; the wire carries no per-item rolls
 }
 
 type Stats map[Stat]float64
@@ -109,12 +108,13 @@ Rules per class in `data/grading/<class>.json`:
 ```
 
 - BIS entries carry their own tier and stats, so grading never needs `gamedata`.
-- Weighted value of an item: `sum(stat * weight)` over its stats and sockets.
-- Slot score: `weighted(item) / weighted(bis)`, capped at 1. Empty slot scores 0.
+- Weighted value of an item: `sum(stat * weight)` over its stats.
+- Slot score: `weighted(item) / weighted(bis)` scaled by the enchant ratio, capped at 1. Empty slot scores 0.
+- Enchant ratio: `minEnchantRatio + (1 - minEnchantRatio) * min(enchant, bisEnchant) / bisEnchant`, and 1 when BIS asks for no enchant. The floor is a tuning knob in `grading`, not a game fact: the wire gives the enchant level but not what it adds.
 - Slot share: `weighted(bis of slot) / sum(weighted(bis of all slots))`.
 - Overall score: `sum(slotScore * slotShare)`.
 - Letter grade from `thresholds` (below the lowest threshold is `D`), for slots and overall.
-- Upgrade advice: per slot `gain = (1 - slotScore) * slotShare`. Top 3 shown with a reason: missing item, enchant below BIS, lower tier, or weak rolls (same tier and enchant as BIS but lower weighted value).
+- Upgrade advice: per slot `gain = (1 - slotScore) * slotShare`. Top 3 shown with a reason: missing item, enchant below BIS, lower tier, or a weaker item (same tier and enchant as BIS but lower weighted value).
 
 Rules files are embedded in the binary. A file with the same name in the user config folder overrides the embedded one.
 
@@ -123,7 +123,7 @@ Initial weights are placeholders to be tuned by the maintainer and community.
 ## Game data (`gamedata`)
 
 - Single `items.json` in `os.UserCacheDir()/glimpse`, loaded into a map at startup.
-- Unknown item ID: fetched in background from the item source, cached, then an update event is emitted. Offline: shown as `Unknown item #ID` and still graded on its captured stats.
+- Unknown item ID: fetched in background from the item source, cached, then an update event is emitted. A failed fetch is remembered for 10 minutes so a repeating broadcast does not re-request it endlessly. Offline: shown as `Unknown item #ID`, and since the wire carries no stats of its own there is nothing to grade it on, so a character with no cached item is reported as not graded rather than as a D.
 - Settings action "Download all assets": bulk fetch of all items and icons into the cache, with progress events. Icons are served to the webview from the cache.
 - Requests are rate limited with an identifying User-Agent.
 - Item source: NC official AION 2 site API, TW region catalog in English, through the MIT Go client `github.com/nuriland/aion2-api`. questlog.gg does not allow automated use. Global regions have no item catalog, so Global players rely on item IDs being shared with TW (verify with first captures). Datamining the client files stays the fallback.

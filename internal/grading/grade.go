@@ -13,10 +13,16 @@ const (
 	ReasonMissing Reason = "missing"
 	ReasonTier    Reason = "tier"
 	ReasonEnchant Reason = "enchant"
-	ReasonRolls   Reason = "rolls"
+	// ReasonItem is the slot being at BIS tier and enchant but a weaker item.
+	ReasonItem Reason = "item"
 )
 
 const maxUpgrades = 3
+
+// minEnchantRatio is the share of its value an unenchanted item keeps. It and the
+// linear ramp to BIS below are a tuning knob, not a game fact: the wire carries the
+// enchant level but not what it adds, so the curve is a guess the maintainer retunes.
+const minEnchantRatio = 0.6
 
 type SlotGrade struct {
 	Slot   gear.Slot
@@ -48,12 +54,12 @@ func Weighted(s gear.Stats, w map[gear.Stat]float64) float64 {
 	return sum
 }
 
-func itemValue(it gear.Item, w map[gear.Stat]float64) float64 {
-	v := Weighted(it.Stats, w)
-	for _, s := range it.Sockets {
-		v += Weighted(s, w)
+// enchantRatio scales an item's value by how close its enchant is to BIS.
+func enchantRatio(have, bis int) float64 {
+	if bis <= 0 {
+		return 1
 	}
-	return v
+	return minEnchantRatio + (1-minEnchantRatio)*float64(min(have, bis))/float64(bis)
 }
 
 // Grade returns false when the character's class has no rules.
@@ -105,15 +111,17 @@ func scoreSlot(items map[gear.Slot]gear.Item, slot gear.Slot, r Rules, bisValue 
 	if !has {
 		return 0, ReasonMissing, 0
 	}
-	score := max(min(itemValue(it, r.Weights)/bisValue, 1), 0)
 	b := r.BIS[slot]
+	// Enchant is the only per-item quality the wire carries besides the id, so it has
+	// to move the score: otherwise a +0 best-in-slot item grades S with nothing to fix.
+	score := max(min(Weighted(it.Stats, r.Weights)/bisValue*enchantRatio(it.Enchant, b.Enchant), 1), 0)
 	switch {
 	case it.Tier < b.Tier:
 		return score, ReasonTier, b.Tier
 	case it.Enchant < b.Enchant:
 		return score, ReasonEnchant, b.Enchant
 	}
-	return score, ReasonRolls, 0
+	return score, ReasonItem, 0
 }
 
 // letter picks the highest threshold <= score, else "D".

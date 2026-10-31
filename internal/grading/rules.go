@@ -3,9 +3,11 @@ package grading
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
+	"strings"
 
 	"github.com/aexygit/glimpse/internal/gear"
 )
@@ -35,13 +37,23 @@ func LoadRules(embedded fs.FS, overrideDir string) (map[gear.Class]Rules, []erro
 	return rules, errs
 }
 
+// loadDir reads every *.json at the root of fsys. A missing directory is normal
+// (most users have no overrides); any other listing failure is reported, because
+// an unreadable override directory would otherwise silently use embedded rules.
 func loadDir(fsys fs.FS, into map[gear.Class]Rules) []error {
-	names, err := fs.Glob(fsys, "*.json")
+	ents, err := fs.ReadDir(fsys, ".")
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
 	if err != nil {
 		return []error{fmt.Errorf("listing rules: %w", err)}
 	}
 	var errs []error
-	for _, name := range names {
+	for _, e := range ents {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".json") {
+			continue
+		}
 		r, err := loadFile(fsys, name)
 		if err != nil {
 			errs = append(errs, err)

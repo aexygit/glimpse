@@ -52,7 +52,7 @@ func TestGrade(t *testing.T) {
 			upgrades: []Upgrade{{Slot: "weapon", Reason: ReasonMissing}, {Slot: "ring1", Reason: ReasonMissing}},
 		},
 		{
-			name: "weak rolls",
+			name: "weaker item at BIS tier and enchant",
 			items: map[gear.Slot]gear.Item{
 				"weapon": {Tier: 5, Enchant: 15, Stats: gear.Stats{"attack": 50}},
 				"ring1":  bisRing(),
@@ -60,12 +60,12 @@ func TestGrade(t *testing.T) {
 			overall:     0.5/1.2 + 1.0/6,
 			letter:      "C",
 			weaponScore: 0.5,
-			upgrades:    []Upgrade{{Slot: "weapon", Reason: ReasonRolls}},
+			upgrades:    []Upgrade{{Slot: "weapon", Reason: ReasonItem}},
 		},
 		{
-			name: "socket capped",
+			name: "score capped above BIS",
 			items: map[gear.Slot]gear.Item{
-				"weapon": {Tier: 5, Enchant: 15, Stats: gear.Stats{"attack": 60}, Sockets: []gear.Stats{{"attack": 50}}},
+				"weapon": {Tier: 5, Enchant: 15, Stats: gear.Stats{"attack": 150}},
 				"ring1":  bisRing(),
 			},
 			overall:     1,
@@ -95,14 +95,28 @@ func TestGrade(t *testing.T) {
 			upgrades:    []Upgrade{{Slot: "weapon", Reason: ReasonTier, Target: 5}},
 		},
 		{
+			// +12 of BIS +15 keeps 0.6 + 0.4*12/15 of the item's value.
 			name: "low enchant",
 			items: map[gear.Slot]gear.Item{
 				"weapon": {Tier: 5, Enchant: 12, Stats: gear.Stats{"attack": 90}},
 				"ring1":  bisRing(),
 			},
-			overall:     0.9*100/120 + 20.0/120,
+			overall:     0.828*100/120 + 20.0/120,
 			letter:      "A",
-			weaponScore: 0.9,
+			weaponScore: 0.828,
+			upgrades:    []Upgrade{{Slot: "weapon", Reason: ReasonEnchant, Target: 15}},
+		},
+		{
+			// The BIS item at +0 is not best in slot: it must not grade S and must
+			// show up as an upgrade, which is what dropping enchant from the score did.
+			name: "BIS item unenchanted",
+			items: map[gear.Slot]gear.Item{
+				"weapon": {Tier: 5, Stats: gear.Stats{"attack": 100}},
+				"ring1":  bisRing(),
+			},
+			overall:     minEnchantRatio*100/120 + 20.0/120,
+			letter:      "C",
+			weaponScore: minEnchantRatio,
 			upgrades:    []Upgrade{{Slot: "weapon", Reason: ReasonEnchant, Target: 15}},
 		},
 	}

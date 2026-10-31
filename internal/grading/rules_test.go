@@ -1,6 +1,7 @@
 package grading
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
@@ -70,5 +71,29 @@ func TestLoadRulesMissingOverrideDir(t *testing.T) {
 	}
 	if _, ok := rules["assassin"]; !ok {
 		t.Error("embedded rules missing")
+	}
+}
+
+// errFS fails every Open, which is how fs.ReadDir surfaces a directory it cannot read.
+type errFS struct{ err error }
+
+func (f errFS) Open(string) (fs.File, error) { return nil, f.err }
+
+func TestLoadRulesUnreadableOverrideDir(t *testing.T) {
+	t.Parallel()
+	// Spec line 142 promises a warning for a broken override, so an unreadable
+	// directory must not be silently skipped the way a missing one is.
+	rules, errs := LoadRules(embeddedFS(), "")
+	if len(errs) != 0 {
+		t.Fatalf("embedded only: %v", errs)
+	}
+	if errs := loadDir(errFS{fs.ErrPermission}, rules); len(errs) != 1 {
+		t.Errorf("unreadable dir: errs = %v, want exactly 1", errs)
+	}
+	if errs := loadDir(errFS{fs.ErrNotExist}, rules); len(errs) != 0 {
+		t.Errorf("missing dir: errs = %v, want none", errs)
+	}
+	if _, ok := rules["assassin"]; !ok {
+		t.Error("embedded rules lost")
 	}
 }
